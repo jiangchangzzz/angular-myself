@@ -1,6 +1,5 @@
+/* jshint globalstrict: true */
 'use strict';
-
-var _=require('./lodash');
 
 /**
  * 作用域引用类型
@@ -20,7 +19,8 @@ Scope.prototype={
     $watch: function(watchFn,listenFn,valueEq){
         var watcher={
             watchFn: watchFn,
-            listenFn: listenFn || function(){},
+            listenFn: listenFn || function(){},   //监听函数是可选的
+            last: initWatchVal,   //将旧值初始化为独一无二的引用类型，保证数据为undefined时也会触发监听函数
             valueEq: !!valueEq
         };
         this.$$watchers.push(watcher);
@@ -41,7 +41,9 @@ Scope.prototype={
             var oldValue=item.last;
 
             if(!self.$$isEqual(newValue,oldValue,item.valueEq)){
-                item.listenFn(newValue,oldValue,self);
+                item.listenFn(newValue,
+                    oldValue===initWatchVal? newValue:oldValue,
+                    self);
 
                 //如果值比较则进行深入拷贝
                 item.last=(item.valueEq? _.cloneDeep(newValue) : newValue);
@@ -114,7 +116,10 @@ Scope.prototype={
             this.$digest();
         }
     }
-}
+};
+
+//独一无二的引用类型
+function initWatchVal(){}
 
 /*初始化作用域*/
 var scope=new Scope();
@@ -123,7 +128,7 @@ scope.name='jc';
 scope.$watch(function(s){
     return s.name;
 },function(newValue,oldValue,s){
-    console.log(`newValue is ${newValue},oldValue is ${oldValue}`);
+    console.log('newValue is '+newValue+',oldValue is '+oldValue);
 });
 //初始化完毕后调用一次脏检查循环，用于记录下当前监听元素的初始值
 scope.$digest();
