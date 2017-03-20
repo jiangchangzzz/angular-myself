@@ -7,6 +7,7 @@
  */
 function Scope(){
    this.$$watchers=[];   //监听器列表
+   this.$$lastDirtyWatch=null;  //上一个脏的监视器
 }
 
 Scope.prototype={
@@ -24,6 +25,7 @@ Scope.prototype={
             valueEq: !!valueEq
         };
         this.$$watchers.push(watcher);
+        this.$$lastDirtyWatch=null;   //当添加新的监视器时，禁止脏检查优化，为了保证新的监视器也会运行
     },
 
     /**
@@ -34,13 +36,14 @@ Scope.prototype={
     $$digestOnce: function(){
         var self=this;   //保存当前scope作用域
         var dirty=false;   //是否存在监控数据修改，调用过监听器函数，因为监听器函数也有可能改变其他监控值
-        this.$$watchers.forEach(function(item){
+        this.$$watchers.every(function(item){
             //从监控函数获取新值
             var newValue=item.watchFn(self);
             //读取保存的旧值
             var oldValue=item.last;
 
             if(!self.$$isEqual(newValue,oldValue,item.valueEq)){
+                self.$$lastDirtyWatch=item;
                 item.listenFn(newValue,
                     oldValue===initWatchVal? newValue:oldValue,
                     self);
@@ -48,6 +51,12 @@ Scope.prototype={
                 //如果值比较则进行深入拷贝
                 item.last=(item.valueEq? _.cloneDeep(newValue) : newValue);
                 dirty=true;
+                return true;
+            }
+            else if(item===self.$$lastDirtyWatch){
+                return false;
+            }else{
+                return true;
             }
         });
         return dirty;
@@ -60,6 +69,7 @@ Scope.prototype={
     $digest: function(){
         var ttl=10;   //脏检查循环次数上限
         var dirty;
+        this.$$lastDirtyWatch=null;
         do{
             dirty=this.$$digestOnce();
             if(dirty && (--ttl===0)){
