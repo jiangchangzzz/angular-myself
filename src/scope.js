@@ -8,12 +8,14 @@
 function Scope(){
    this.$$watchers=[];   //监听器列表
    this.$$lastDirtyWatch=null;  //上一个脏的监视器
+   this.$$asyncQueue=[];   //异步队列
+   this.phase=null;   //当前状态，包括$digest和$apply
 }
 
 Scope.prototype={
     /**
      * 添加监听器
-     * watchFn 监控函数，返回监控对象
+     * watchFn 监控函数，返回监控对象,监控函数应该是没有副作用的，即不会改变其他数据
      * listenFn 监听函数（可选），监控对象发生变化时执行的操作
      * valueEq 是否监控值的变更（可选）
      */
@@ -70,12 +72,21 @@ Scope.prototype={
         var ttl=10;   //脏检查循环次数上限
         var dirty;
         this.$$lastDirtyWatch=null;
+
+        this.$beginPhase('$digest');
         do{
+            //第一轮脏检查循环结束后运行延时函数，延时函数也可能会改变作用域，因此也要进行脏检查循环
+            while(this.$$asyncQueue.length>0){
+                var task=this.$$asyncQueue.shift();
+                task.scope.$eval(task.expression);
+            }
+
             dirty=this.$$digestOnce();
-            if(dirty && (--ttl===0)){
+            if((dirty || this.$$asyncQueue.length>0) && (--ttl===0)){
                 throw new Error('digest iterations readched');
             }
-        }while(dirty);
+        }while(dirty || this.$$asyncQueue.length>0);   //确认异步队列没有任务
+        this.$clearPhase();
     },
 
     /**
@@ -114,17 +125,55 @@ Scope.prototype={
     },
 
     /**
+     * 延时执行函数
+     * 函数将在脏检查循环时执行
+     */
+    $evalAsync: function(func){
+        var self=this;
+        //确保注册异步函数后会调用脏检查循环
+        if(!this.$$phase && !this.$$asyncQueue.length){
+            setTimeout(function(){
+                if(self.$$asyncQueue.length){
+                    self.$digest();
+                }
+            },0)
+        };
+
+        this.$$asyncQueue.push({scope: this,expression: func});
+    },
+
+    /**
      * 执行非angular函数，改变监控数据
      * 会执行脏检查循环
      */
     $apply: function(func){
         try{
+            this.$beginPhase('$apply');
             return this.$eval(func);
         }
         finally{
+            this.$clearPhase();
             //确保一定会进行脏检查循环
             this.$digest();
         }
+    },
+
+    /**
+     * 设置当前状态
+     * 如果当前有状态则抛出异常
+     */
+    $beginPhase: function(phase){
+        if(this.$$phase){
+            throw new Error(this.$$phase+'is ready');
+        }
+        this.$$phase=phase;
+    },
+
+    /**
+     * 清空当前状态
+     */
+    $clearPhase: function(){
+        this.$$phase=null;
     }
 };
 
@@ -132,20 +181,20 @@ Scope.prototype={
 function initWatchVal(){}
 
 /*初始化作用域*/
-var scope=new Scope();
+/*var scope=new Scope();
 scope.name='jc';
 //添加监听器
 scope.$watch(function(s){
     return s.name;
 },function(newValue,oldValue,s){
     console.log('newValue is '+newValue+',oldValue is '+oldValue);
-});
+});*/
 //初始化完毕后调用一次脏检查循环，用于记录下当前监听元素的初始值
-scope.$digest();
+//scope.$digest();
 
 /*作用域运行阶段*/
-scope.name='red';
-scope.$digest();
+//scope.name='red';
+//scope.$digest();
 
 /*两个监控数据相互影响，无限脏检查循环*/ 
 /*scope.a=0;
