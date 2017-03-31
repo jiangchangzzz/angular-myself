@@ -8,7 +8,10 @@
 function Scope(){
    this.$$watchers=[];   //监听器列表
    this.$$lastDirtyWatch=null;  //上一个脏的监视器
-   this.$$asyncQueue=[];   //异步队列
+   this.$$asyncQueue=[];   //异步队列，函数会在当前脏检查循环中运行
+   this.$$applyAsyncQueue=[];   //异步执行队列，函数会延时执行
+   this.$$applyAsyncId=null;   //异步执行定时器的序号
+   this.$$postDigestQueue=[];   //脏检查循环后运行队列
    this.phase=null;   //当前状态，包括$digest和$apply
 }
 
@@ -26,8 +29,16 @@ Scope.prototype={
             last: initWatchVal,   //将旧值初始化为独一无二的引用类型，保证数据为undefined时也会触发监听函数
             valueEq: !!valueEq
         };
-        this.$$watchers.push(watcher);
+        this.$$watchers.unshift(watcher);
         this.$$lastDirtyWatch=null;   //当添加新的监视器时，禁止脏检查优化，为了保证新的监视器也会运行
+
+        var self=this;
+        return function(){
+            var index=self.$$watchers.indexOf(watcher);
+            if(index>=0){
+                self.$$watchers.splice(index,1);
+            }
+        }
     },
 
     /**
@@ -38,7 +49,8 @@ Scope.prototype={
     $$digestOnce: function(){
         var self=this;   //保存当前scope作用域
         var dirty=false;   //是否存在监控数据修改，调用过监听器函数，因为监听器函数也有可能改变其他监控值
-        this.$$watchers.every(function(item){
+        _.forEachRight(this.$$watchers,function(item){
+            try{
             //从监控函数获取新值
             var newValue=item.watchFn(self);
             //读取保存的旧值
@@ -53,13 +65,14 @@ Scope.prototype={
                 //如果值比较则进行深入拷贝
                 item.last=(item.valueEq? _.cloneDeep(newValue) : newValue);
                 dirty=true;
-                return true;
             }
             else if(item===self.$$lastDirtyWatch){
                 return false;
-            }else{
-                return true;
             }
+        }
+        catch(error){
+            console.log(error);
+        }
         });
         return dirty;
     },
@@ -72,13 +85,24 @@ Scope.prototype={
         var ttl=10;   //脏检查循环次数上限
         var dirty;
         this.$$lastDirtyWatch=null;
-
         this.$beginPhase('$digest');
+
+        //如果存在异步任务队列，则在脏检查循环时直接执行之
+        if(this.$$applyAsyncId){
+            clearTimeout(this.$$applyAsyncId);
+            this.$$flushApplyAsync();
+        }
+
         do{
             //第一轮脏检查循环结束后运行延时函数，延时函数也可能会改变作用域，因此也要进行脏检查循环
             while(this.$$asyncQueue.length>0){
+                try{
                 var task=this.$$asyncQueue.shift();
                 task.scope.$eval(task.expression);
+            }
+            catch(error){
+                console.log(error);
+            }
             }
 
             dirty=this.$$digestOnce();
@@ -87,6 +111,15 @@ Scope.prototype={
             }
         }while(dirty || this.$$asyncQueue.length>0);   //确认异步队列没有任务
         this.$clearPhase();
+
+        while(this.$$postDigestQueue.length>0){
+            try{
+            this.$$postDigestQueue.shift()();
+        }
+        catch(error){
+            console.log(error);
+        }
+        }
     },
 
     /**
@@ -174,6 +207,40 @@ Scope.prototype={
      */
     $clearPhase: function(){
         this.$$phase=null;
+    },
+
+    /**
+     * 延时执行函数，主要用于延时执行http响应函数，仅调用一次脏检查循环
+     */
+    $applyAsync: function(func){
+        var self=this;
+        self.$$applyAsyncQueue.push(function(){
+            self.$eval(func);
+        });
+
+        //防止重复设置定时器
+        if(self.$$applyAsyncId===null){
+            self.$$applyAsyncId=setTimeout(self.$$flushApplyAsync.bind(self),0);
+        }
+    },
+
+    //执行并清空任务队列
+    $$flushApplyAsync: function(){
+        while(this.$$applyAsyncQueue.length>0){
+            try{
+            this.$$applyAsyncQueue.shift()();
+        }
+        catch(error){
+            console.log(error);
+        }
+        }
+        this.$$applyAsyncId=null;
+    },
+
+    //注册脏检查循环后运行函数
+    $$postDigest: function(func){
+        //循环后函数并没有传入任何参数
+        this.$$postDigestQueue.push(func);   
     }
 };
 

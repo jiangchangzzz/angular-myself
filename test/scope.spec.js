@@ -336,5 +336,236 @@ describe('Scope', function () {
                done();
            },50);
         });
+
+        it('$applyAsync: async do task',function(){
+            scope.counter=0;
+            scope.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                scope.counter++;
+            });
+
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+
+            scope.$applyAsync(function(){
+                scope.value='ready';
+            });
+            expect(scope.counter).toBe(1);
+
+            setTimeout(function(){
+                expect(scope.counter).toBe(2);
+                done();   //测试异步调用完成后调用done
+            },50); 
+        });
+
+        it('$applyAsync: run in listener',function(){
+            scope.value=1;
+            scope.isApply=false;
+            scope.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                scope.$applyAsync(function(scope){
+                    scope.isApply=true;
+                });
+            });
+
+            scope.$digest();
+            expect(scope.isApply).toBe(false);
+            setTimeout(function(){
+                expect(scope.isApply).toBe(true);
+                done();
+            },50);
+        });
+
+        it('$applyAsync: combine digest',function(){
+            scope.counter=0;
+            scope.$watch(function(scope){
+                scope.counter++;
+                return scope.value;
+            });
+
+            scope.$applyAsync(function(scope){
+                scope.value=1;
+            });
+
+            scope.$applyAsync(function(scope){
+                scope.value=2;
+            });
+
+            setTimeout(function(){
+                expect(scope.counter).toBe(2);
+                done();
+            },50);
+        });
+
+        it('$$postDigest: run after digest',function(){
+            scope.counter=0;
+
+            scope.$$postDigest(function(){
+                scope.counter++;
+            });
+
+            expect(scope.counter).toBe(0);
+            
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+        });
+
+        it('$$postDigest: without digest',function(){
+            scope.value=1;
+            //$$postDigest注册的循环后运行函数没有传入任何参数
+            scope.$$postDigest(function(){
+                scope.value=2;
+            });
+
+            scope.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                scope.newValue=newValue;
+            });
+
+            scope.$digest();
+            expect(scope.newValue).toBe(1);
+
+            scope.$digest();
+            expect(scope.newValue).toBe(2);
+        });
+
+         it('exception in watchFn',function(){
+            scope.value='test';
+            scope.counter=0;
+
+            scope.$watch(function(scope){
+                throw 'error';
+            });
+
+            scope.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                scope.counter++;
+            });
+
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+         });
+
+         it('exception in listenFn',function(){
+            scope.value='test';
+            scope.counter=0;
+
+            scope.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                throw 'error';
+            });
+
+            scope.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                scope.counter++;
+            });
+
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+         });
+
+         it('exception in $evalAsync',function(){
+            scope.value='test';
+            scope.counter=0;
+
+            scope.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                return scope.counter++;
+            });
+
+            scope.$evalAsync(function(scope){
+                throw 'error';
+            });
+
+            setTimeout(function(){
+                expect(scope.counter).toBe(1);
+                done();
+            },50);
+         });
+
+         it('exception in $applyAsync',function(){
+            scope.counter=0;
+            scope.$applyAsync(function(scope){
+                throw 'error';
+            });
+
+            scope.$applyAsync(function(scope){
+                throw 'error';
+            })
+            
+            scope.$applyAsync(function(scope){
+                scope.counter++;
+            });
+
+            setTimeout(function(){
+                expect(scope.counter).toBe(1);
+                done();
+            },50);
+         });
+
+         it('exception in $$postDigest',function(){
+            var counter=0;
+            scope.$$postDigest(function(){
+                throw 'error';
+            });
+
+            scope.$$postDigest(function(){
+                counter++;
+            });
+
+            scope.$digest();
+            expect(counter).toBe(1);
+         });
+
+         it('destory watcher by $watch return',function(){
+            scope.value='test';
+            scope.counter=0;
+
+            var destroyWatcher=scope.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                scope.counter++;
+            });
+
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+
+            destroyWatcher();
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+         });
+
+         it('destroy watcher in watchFn',function(){
+             scope.value='test';
+             var res=[];
+
+             scope.$watch(function(scope){
+                res.push(1);
+                return scope.value;
+             });
+
+             var destroy=scope.$watch(function(scope){
+                res.push(2);
+                destroy();
+             });
+
+             scope.$watch(function(scope){
+                res.push(3);
+                return scope.value;
+             });
+
+             scope.$digest();
+             expect(res).toEqual([1,2,3,1,3]);
+         })
     });
 });
