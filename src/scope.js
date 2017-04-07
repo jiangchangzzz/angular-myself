@@ -37,6 +37,7 @@ Scope.prototype={
             var index=self.$$watchers.indexOf(watcher);
             if(index>=0){
                 self.$$watchers.splice(index,1);
+                self.$$lastDirtyWatch=null;   //禁止进行优化，因为可能销毁前一个监视器，导致脏检查循环结束
             }
         }
     },
@@ -51,6 +52,7 @@ Scope.prototype={
         var dirty=false;   //是否存在监控数据修改，调用过监听器函数，因为监听器函数也有可能改变其他监控值
         _.forEachRight(this.$$watchers,function(item){
             try{
+            if(item){    //确保删除一系列监视器时，当前监视器还存在
             //从监控函数获取新值
             var newValue=item.watchFn(self);
             //读取保存的旧值
@@ -68,6 +70,7 @@ Scope.prototype={
             }
             else if(item===self.$$lastDirtyWatch){
                 return false;
+            }
             }
         }
         catch(error){
@@ -241,6 +244,59 @@ Scope.prototype={
     $$postDigest: function(func){
         //循环后函数并没有传入任何参数
         this.$$postDigestQueue.push(func);   
+    },
+
+    //注册多个监视器
+    $watchGroup: function(watchFns,listenFn){
+        var self=this;
+        var oldValues=new Array(watchFns.length);
+        var newValues=new Array(watchFns.length);
+
+        //确保监视器列表为空时，也会延时运行监听函数一次
+        var exist=true;
+        if(watchFns.length===0){
+            self.$evalAsync(function(){
+                if(exist){
+                    listenFn(newValues,oldValues,self);
+                }
+            });
+            //返回一个销毁监视器的方法
+            return function(){
+                exist=false;
+            };
+        }
+
+        var changed=false;   //是否已经改变过
+        var firstRun=true;   //是否第一次运行
+        function watchGroupListener(){
+            if(firstRun){
+                //第一次运行时传入两次新值，避免后面重复判断新值是否等于旧值
+                listenFn(newValues,newValues,self);
+                firstRun=false;
+            }
+            else{
+                listenFn(newValues,oldValues,self);
+            }
+            changed=false;
+        }
+
+        var destroy=watchFns.map(function(item,index){
+            return self.$watch(item,function(newValue,oldValue){
+                oldValues[index]=oldValue;
+                newValues[index]=newValue;
+               if(!changed){
+                   changed=true;
+                   //延时运行监听函数
+                   self.$evalAsync(watchGroupListener);
+               }
+            });
+        });
+
+        return function(){
+           destroy.forEach(function(item){
+                item();
+           });
+        }
     }
 };
 

@@ -566,6 +566,191 @@ describe('Scope', function () {
 
              scope.$digest();
              expect(res).toEqual([1,2,3,1,3]);
-         })
+         });
+
+         it('watcher destroy other watcher',function(){
+            scope.value='test';
+            scope.counter=0;
+
+            scope.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                destroy();
+            });
+
+            var destroy=scope.$watch(function(){
+
+            },function(newValue,oldValue,scope){
+
+            });
+
+            scope.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                scope.counter++;
+            });
+
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+         });
+
+         it('watcher destroy some watchers',function(){
+            scope.value='test';
+            scope.counter=0;
+
+            var destroyWatcher=scope.$watch(function(scope){
+                destroyWatcher();
+                destroyWatcher1();
+                destroyWatcher2();
+            });
+
+            var destroyWatcher1=scope.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                scope.counter++;
+            });
+
+            var destroyWatcher2=scope.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                scope.counter++;
+            });
+
+            scope.$digest();
+            expect(scope.counter).toBe(0);
+         });
+    });
+
+    describe('$watchGroup',function(){
+        var scope;
+        beforeEach(function(){
+            scope=new Scope();
+        });
+
+        it('take watches as an array and calls listener',function(){
+            var getNewValue;
+            var getOldValue;
+
+            scope.a=1;
+            scope.b=2;
+            
+            scope.$watchGroup([function(scope){
+                return scope.a;
+            },function(scope){
+                return scope.b;
+            }],function(newValue,oldValue,scope){
+                getNewValue=newValue;
+                getOldValue=oldValue;
+            });
+
+            scope.$digest();
+            expect(getNewValue).toEqual([1,2]);
+            expect(getOldValue).toEqual([1,2]);
+        });
+
+        it('call $watchGroup once per digest',function(){
+            scope.a=0;
+            scope.b=0;
+            scope.counter=0;
+
+            scope.$watchGroup([function(scope){
+                return scope.a;
+            },function(scope){
+                return scope.b;
+            }],function(newValue,oldValue,scope){
+                scope.counter++;
+            });
+
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+        });
+
+        it('use the same array on the first run',function(){
+            scope.a=0;
+            scope.b=0;
+            var getNewValue;
+            var getOldValue;
+
+            scope.$watchGroup([function(scope){
+                return scope.a;
+            },function(scope){
+                return scope.b;
+            }],function(newValue,oldValue,scope){
+                getNewValue=newValue;
+                getOldValue=oldValue;
+            });
+
+            scope.$digest();
+            expect(getNewValue).toBe(getOldValue);
+        });
+
+        it('use different array on the next run',function(){
+            scope.a=0;
+            scope.b=0;
+            var getNewValue;
+            var getOldValue;
+
+            scope.$watchGroup([function(scope){
+                return scope.a;
+            },function(scope){
+                return scope.b;
+            }],function(newValue,oldValue,scope){
+                getNewValue=newValue;
+                getOldValue=oldValue;
+            });
+
+            scope.$digest();
+            scope.a=1;
+            scope.$digest();
+            expect(getOldValue).toEqual([0,0]);
+            expect(getNewValue).toEqual([1,0]);
+        });
+
+        it('call listener once when watchFns is empty',function(){
+            var getOldValue;
+            var getNewValue;
+
+            scope.$watchGroup([],function(newValue,oldValue,scope){
+                getOldValue=oldValue;
+                getNewValue=newValue;
+            });
+
+            scope.$digest();
+            expect(getOldValue).toEqual([]);
+            expect(getNewValue).toEqual([]);
+        });
+
+        it('destroy watchGroup',function(){
+            scope.a=0;
+            scope.b=0;
+            scope.counter=0;
+
+            var destroy=scope.$watchGroup([function(scope){
+                return scope.a;
+            },function(){
+                return scope.b;
+            }],function(){
+                scope.counter++;
+            });
+
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+
+            destroy();
+            scope.a=1;
+            scope.$digest();
+            expect(scope.counter).toBe(1);
+        });
+
+        it('destroy empty watchGroup',function(){
+            scope.counter=0;
+            var destroy=scope.$watchGroup([],
+                function(newValue,oldValue,scope){
+                    scope.counter++;
+            });
+            destroy();
+            scope.$digest();
+            expect(scope.counter).toBe(0);
+        });
     });
 });
