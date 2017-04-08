@@ -20,7 +20,7 @@ describe('Scope', function () {
 
         it('calls the listener function of a watch', function () {
             var watchFn = function () {
-                return 'wat'
+                return 'watch';
             };
             var listenerFn = jasmine.createSpy();
             scope.$watch(watchFn, listenerFn);
@@ -134,7 +134,7 @@ describe('Scope', function () {
             });
 
             expect(function () {
-                scope.$digest()
+                scope.$digest();
             }).toThrow();
         });
 
@@ -147,7 +147,7 @@ describe('Scope', function () {
                     return function (scope) {
                         counter++;
                         return scope.array[i];
-                    }
+                    };
                 })(i));
             }
 
@@ -170,7 +170,7 @@ describe('Scope', function () {
                     return scope.a;
                 }, function () {
                     counter++;
-                })
+                });
             });
 
             scope.$digest();
@@ -226,7 +226,7 @@ describe('Scope', function () {
             }, 1);
 
             expect(res).toBe(1);
-        })
+        });
 
         it('$apply: run funcion with digest', function () {
             scope.value = 0;
@@ -501,7 +501,7 @@ describe('Scope', function () {
 
             scope.$applyAsync(function(scope){
                 throw 'error';
-            })
+            });
             
             scope.$applyAsync(function(scope){
                 scope.counter++;
@@ -751,6 +751,154 @@ describe('Scope', function () {
             destroy();
             scope.$digest();
             expect(scope.counter).toBe(0);
+        });
+    });
+
+    describe('inheritance',function(){
+
+        it('inherits the parents properties',function(){
+            var parent=new Scope();
+            parent.value=[1,2,3];
+
+            var child=parent.$new();
+            expect(child.value).toEqual(parent.value);
+        });
+
+        it('parent cannot inherit child properties',function(){
+            var parent=new Scope();
+            var child=parent.$new();
+            child.value=[1,2,3];
+
+            expect(parent.value).toBeUndefined();
+        });
+
+        it('inherit parent properties whenever they define',function(){
+            var parent=new Scope();
+            var child=parent.$new();
+
+            parent.value=[1,2,3];
+            expect(child.value).toEqual(parent.value);
+        });
+
+        it('control parent properties in child properties',function(){
+            var parent=new Scope();
+            var child=parent.$new();
+
+            parent.value=[1,2,3];
+            child.value.push(4);
+            expect(child.value).toEqual([1,2,3,4]);
+            expect(parent.value).toEqual([1,2,3,4]);
+        });
+
+        it('watch property in parent',function(){
+            var parent=new Scope();
+            var child=parent.$new();
+
+            parent.value=[1,2,3];
+            child.counter=0;
+            child.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                scope.counter++;
+            },true);   //进行值比较
+
+            //自作子作用域执行脏检查循环
+            child.$digest();
+            expect(child.counter).toBe(1);
+
+            parent.value.push(4);
+            child.$digest();
+            expect(child.counter).toBe(2);
+        });
+
+        it('inherit at any depth',function(){
+            var a=new Scope();
+            var aa=a.$new();
+            var aaa=aa.$new();
+            var aab=aa.$new();
+
+            a.value=1;
+            expect(aa.value).toBe(1);
+            expect(aaa.value).toBe(1);
+            expect(aab.value).toBe(1);
+
+            aa.ready=2;
+            expect(aaa.ready).toBe(2);
+            expect(aab.ready).toBe(2);
+            expect(a.ready).toBeUndefined();
+        });
+
+        it('shadow parent property with the same name',function(){
+            var parent=new Scope();
+            var child=parent.$new();
+
+            //同名属性覆盖
+            parent.value=1;
+            child.value=2;
+
+            expect(child.value).toBe(2);
+            expect(parent.value).toBe(1);
+        });
+
+        it('wrap attribute in a object',function(){
+            var parent=new Scope();
+            var child=parent.$new();
+
+            //将属性包装成对象属性，就可以在子作用域上修改父作用域上的变量
+            parent.user={
+                name: 'jc'
+            };
+            child.user.name='red';
+            
+            expect(parent.user.name).toBe('red');
+            expect(child.user.name).toBe('red');
+        });
+
+        it('not digest in parent scope',function(){
+            var parent=new Scope();
+            var child=parent.$new();
+
+            parent.value='jc';
+            parent.counter=0;
+            parent.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                scope.counter++;
+            });
+
+            child.$digest();
+            expect(parent.counter).toBe(0);
+        });
+
+        it('keep track of children scope',function(){
+            var parent=new Scope();
+            var child1=parent.$new();
+            var child2=parent.$new();
+            
+            expect(parent.$$children[0]).toBe(child1);
+            expect(parent.$$children[1]).toBe(child2);
+            expect(child1.$$children.length).toBe(0);
+            expect(child2.$$children.length).toBe(0);
+        });
+
+        it('digest its child scope',function(){
+            var parent=new Scope();
+            var child=parent.$new();
+
+            child.value='red';
+            child.counter=0;
+            child.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                scope.counter++;
+            });
+
+            parent.$digest();
+            expect(child.counter).toBe(1);
+        });
+
+        it('$apply digest all scope',function(){
+
         });
     });
 });

@@ -4,7 +4,10 @@
         "require": true,
         "describe": true,
         "it": true,
-        "expect": true
+        "expect": true,
+        "beforeEach": true,
+        "jasmine": true,
+        "done": true
     },
     "browser": true,
     "devel": true
