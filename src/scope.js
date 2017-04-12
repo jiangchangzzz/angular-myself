@@ -14,6 +14,7 @@ function Scope(){
    this.$$postDigestQueue=[];   //脏检查循环后运行队列
    this.phase=null;   //当前状态，包括$digest和$apply
    this.$$children=[];   //记录其子作用域列表
+   this.$root=this;   //根作用域
 }
 
 Scope.prototype={
@@ -31,14 +32,14 @@ Scope.prototype={
             valueEq: !!valueEq
         };
         this.$$watchers.unshift(watcher);
-        this.$$lastDirtyWatch=null;   //当添加新的监视器时，禁止脏检查优化，为了保证新的监视器也会运行
+        this.$root.$$lastDirtyWatch=null;   //当添加新的监视器时，禁止脏检查优化，为了保证新的监视器也会运行
 
         var self=this;
         return function(){
             var index=self.$$watchers.indexOf(watcher);
             if(index>=0){
                 self.$$watchers.splice(index,1);
-                self.$$lastDirtyWatch=null;   //禁止进行优化，因为可能销毁前一个监视器，导致脏检查循环结束
+                self.$root.$$lastDirtyWatch=null;   //禁止进行优化，因为可能销毁前一个监视器，导致脏检查循环结束
             }
         };
     },
@@ -63,7 +64,7 @@ Scope.prototype={
             oldValue=item.last;
 
             if(!scope.$$isEqual(newValue,oldValue,item.valueEq)){
-                self.$$lastDirtyWatch=item;
+                scope.$root.$$lastDirtyWatch=item;
                 item.listenFn(newValue,
                     oldValue===initWatchVal? newValue:oldValue,
                     scope);
@@ -72,7 +73,7 @@ Scope.prototype={
                 item.last=(item.valueEq? _.cloneDeep(newValue) : newValue);
                 dirty=true;
             }
-            else if(item===self.$$lastDirtyWatch){
+            else if(item===scope.$root.$$lastDirtyWatch){
                 continueLoop=false;
                 return false;
             }
@@ -94,7 +95,7 @@ Scope.prototype={
     $digest: function(){
         var ttl=10;   //脏检查循环次数上限
         var dirty;
-        this.$$lastDirtyWatch=null;
+        this.$root.$$lastDirtyWatch=null;
         this.$beginPhase('$digest');
 
         //如果存在异步任务队列，则在脏检查循环时直接执行之
@@ -177,7 +178,7 @@ Scope.prototype={
         if(!this.$$phase && !this.$$asyncQueue.length){
             setTimeout(function(){
                 if(self.$$asyncQueue.length){
-                    self.$digest();
+                    self.$root.$digest();
                 }
             },0);
         }
@@ -197,7 +198,7 @@ Scope.prototype={
         finally{
             this.$clearPhase();
             //确保一定会进行脏检查循环
-            this.$digest();
+            this.$root.$digest();   //从跟作用域执行脏检查循环
         }
     },
 
@@ -230,7 +231,9 @@ Scope.prototype={
 
         //防止重复设置定时器
         if(self.$$applyAsyncId===null){
-            self.$$applyAsyncId=setTimeout(self.$$flushApplyAsync.bind(self),0);
+            self.$$applyAsyncId=setTimeout(function(){
+                self.$apply(self.$$flushApplyAsync.bind(self));
+            },0);
         }
     },
 
@@ -315,11 +318,17 @@ Scope.prototype={
     /**
      * 创建其子作用域
      */
-    $new: function(){
-        //创建一个子作用域构造函数，设置其原型对象，可用Object.create()替代
-        var ChildScope=function(){};
-        ChildScope.prototype=this;
-        var child=new ChildScope();
+    $new: function(isDetach){
+        var child;
+        if(!isDetach){
+             //创建一个子作用域构造函数，设置其原型对象，可用Object.create()替代
+            var ChildScope=function(){};
+            ChildScope.prototype=this;
+            child=new ChildScope();
+        }
+        else{
+            child=new Scope();
+        }
         child.$$watchers=[];
         child.$$children=[];
 

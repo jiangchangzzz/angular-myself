@@ -337,7 +337,7 @@ describe('Scope', function () {
            },50);
         });
 
-        it('$applyAsync: async do task',function(){
+        it('$applyAsync: async do task',function(done){
             scope.counter=0;
             scope.$watch(function(scope){
                 return scope.value;
@@ -359,7 +359,7 @@ describe('Scope', function () {
             },50); 
         });
 
-        it('$applyAsync: run in listener',function(){
+        it('$applyAsync: run in listener',function(done){
             scope.value=1;
             scope.isApply=false;
             scope.$watch(function(scope){
@@ -378,7 +378,7 @@ describe('Scope', function () {
             },50);
         });
 
-        it('$applyAsync: combine digest',function(){
+        it('$applyAsync: combine digest',function(done){
             scope.counter=0;
             scope.$watch(function(scope){
                 scope.counter++;
@@ -473,7 +473,7 @@ describe('Scope', function () {
             expect(scope.counter).toBe(1);
          });
 
-         it('exception in $evalAsync',function(){
+         it('exception in $evalAsync',function(done){
             scope.value='test';
             scope.counter=0;
 
@@ -493,7 +493,7 @@ describe('Scope', function () {
             },50);
          });
 
-         it('exception in $applyAsync',function(){
+         it('exception in $applyAsync',function(done){
             scope.counter=0;
             scope.$applyAsync(function(scope){
                 throw 'error';
@@ -898,7 +898,83 @@ describe('Scope', function () {
         });
 
         it('$apply digest all scope',function(){
+            var parent=new Scope();
+            var child1=parent.$new();
+            var child2=parent.$new();
 
+            parent.value=1;
+            parent.counter=0;
+            parent.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                scope.counter++;
+            });
+
+            child1.$apply(function(scope){
+                
+            });
+            expect(parent.counter).toBe(1);
+        });
+
+        it('$evalAsync digest all scope',function(done){
+            var parent=new Scope();
+            var child1=parent.$new();
+            var child2=parent.$new();
+
+            parent.value=1;
+            parent.counter=0;
+            parent.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                scope.counter++;
+            });
+
+            child1.$evalAsync(function(scope){
+            
+            });
+
+            setTimeout(function(){
+                expect(parent.counter).toBe(1);
+                done();
+            },50);
+        });
+
+        it('detach scope to its parent',function(){
+            var parent=new Scope();
+            var child=parent.$new(true);
+
+            parent.value=1;
+            expect(child.value).toBeUndefined();
+        });
+
+        it('detached scope cannot watch parent',function(){
+            var parent=new Scope();
+            var child=parent.$new(true);
+
+            parent.value=1;
+            child.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                child.getValue=newValue;
+            });
+
+            child.$digest();
+            expect(child.getValue).toBeUndefined();
+        });
+
+        it('digest its detached children',function(){
+            var parent=new Scope();
+            var child=parent.$new(true);
+
+            child.value=1;
+            child.counter=0;
+            child.$watch(function(scope){
+                return scope.value;
+            },function(newValue,oldValue,scope){
+                scope.counter++;
+            });
+            parent.$digest();
+            expect(child.counter).toBe(1);
         });
     });
 });
