@@ -14,7 +14,7 @@ function Scope(){
    this.$$postDigestQueue=[];   //脏检查循环后运行队列
    this.phase=null;   //当前状态，包括$digest和$apply
    this.$$children=[];   //记录其子作用域列表
-   this.$root=this;   //根作用域
+   this.$root=this;   //根作用域,一开始是指向自己本身
 }
 
 Scope.prototype={
@@ -99,8 +99,8 @@ Scope.prototype={
         this.$beginPhase('$digest');
 
         //如果存在异步任务队列，则在脏检查循环时直接执行之
-        if(this.$$applyAsyncId){
-            clearTimeout(this.$$applyAsyncId);
+        if(this.$root.$$applyAsyncId){
+            clearTimeout(this.$root.$$applyAsyncId);
             this.$$flushApplyAsync();
         }
 
@@ -230,8 +230,8 @@ Scope.prototype={
         });
 
         //防止重复设置定时器
-        if(self.$$applyAsyncId===null){
-            self.$$applyAsyncId=setTimeout(function(){
+        if(self.$root.$$applyAsyncId===null){
+            self.$root.$$applyAsyncId=setTimeout(function(){
                 self.$apply(self.$$flushApplyAsync.bind(self));
             },0);
         }
@@ -249,7 +249,7 @@ Scope.prototype={
             console.log(error);
         }
         }
-        this.$$applyAsyncId=null;
+        this.$root.$$applyAsyncId=null;
     },
 
     /**
@@ -318,21 +318,30 @@ Scope.prototype={
     /**
      * 创建其子作用域
      */
-    $new: function(isDetach){
+    $new: function(isDetach,parent){
         var child;
+        parent=parent || this;
         if(!isDetach){
              //创建一个子作用域构造函数，设置其原型对象，可用Object.create()替代
             var ChildScope=function(){};
-            ChildScope.prototype=this;
+            ChildScope.prototype=this;   //创建的不分离的子作用域还是原型继承原作用域
             child=new ChildScope();
         }
         else{
+            //如果是分离的作用域，则与父作用域无关
             child=new Scope();
+            child.$root=parent.$root;
+            //与父作用域公用同一个异步队列
+            child.$$asyncQueue=parent.$$asyncQueue;
+            child.$$postDigestQueue=parent.$$postDigestQueue;
+            child.$$applyAsyncQueue=parent.$$applyAsyncQueue;
         }
+
         child.$$watchers=[];
         child.$$children=[];
 
-        this.$$children.push(child);
+        parent.$$children.push(child);
+        child.$parent=parent;
         return child;
     },
 
@@ -349,6 +358,22 @@ Scope.prototype={
         else{
             return false;
         }
+    },
+
+    /**
+     * 销毁当前作用域
+     */
+    $destroy: function(){
+        //销毁其父作用域对其的引用
+        if(this.$parent){
+            var children=this.$parent.$$children;
+            var index=children.indexOf(this);
+            if(index>=0){
+                children.splice(index,1);
+            }
+        }
+        //销毁其所有监视器
+        this.$$watchers=null;
     }
 };
 
