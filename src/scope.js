@@ -374,6 +374,58 @@ Scope.prototype={
         }
         //销毁其所有监视器
         this.$$watchers=null;
+    },
+
+    $watchCollection: function(watch,listen){
+        var self=this;
+        var newValue;
+        var oldValue;
+        var count=0;
+
+        //自定义对应的监视函数
+        var watchFn=function(scope){
+            //保存响应的引用
+            newValue=watch(scope);
+
+            if(_.isObject(newValue)){
+                if(_.isArray(newValue)){
+                    if(!_.isArray(oldValue)){
+                        count++;
+                        oldValue=[];
+                    }
+                    
+                    if(newValue.length!==oldValue.length){
+                        count++;
+                        oldValue.length=newValue.length;
+                    }
+                    
+                    newValue.forEach(function(item,index){
+                        if(!self.$$isEqual(item,oldValue[index],false)){
+                            count++;
+                            oldValue[index]=item;
+                        }
+                    });
+                }
+                else{
+                
+                }
+            }
+            else{
+                //使用基于引用比较
+                if(!self.$$isEqual(newValue,oldValue,false)){
+                    count++;
+                }
+
+                oldValue=newValue;
+            }
+            return count;
+        };
+
+        var listenFn=function(){
+            listen(newValue,oldValue,self);
+        };
+
+        return this.$watch(watchFn,listenFn);
     }
 };
 
